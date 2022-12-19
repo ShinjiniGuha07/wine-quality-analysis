@@ -1,0 +1,133 @@
+---
+title: "Wine Quality Analysis"
+author: "Shinjini Guha"
+date: '`r Sys.Date()`'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##### Setup
+
+```{r Setup, message=FALSE}
+# Load standard libraries
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+
+library(janitor)
+library(reshape2)
+
+library(datasets)
+library(GGally)
+library(caret)
+```
+
+Here we will be analyzing the quality of red wine by building a linear regression model. We will later check how our model performs at predicting the quality of wine using test data. For this project we are using the following dataset from from Kaggle: <https://www.kaggle.com/datasets/uciml/red-wine-quality-cortez-et-al-2009>
+
+This dataset is related to red variants of the Portuguese "Vinho Verde" wine.(Cortez et al., 2009)
+
+
+```{r load data}
+wine_quality <- read.csv('winequality-red.csv')
+colSums(is.na(wine_quality)) #no NA values
+wine_quality <- wine_quality %>% clean_names()
+head(wine_quality)
+```
+##### Understanding the dataset
+
+The dataset contains the following variables:
+
+1. fixed acidity: most acids involved with wine or fixed or nonvolatile.
+2. volatile acidity: the amount of acetic acid in wine, which at too high of levels can lead to an unpleasant, vinegar taste.
+3. citric acid: found in small quantities, citric acid can add 'freshness' and flavor to wines.
+4. residual sugar: the amount of sugar remaining after fermentation stops, it's rare to find wines with less than 1 gram/liter and wines with greater than 45 grams/liter are considered sweet.
+5. chlorides: amount of salt in the wine.
+6. free sulfur dioxide: the free form of SO2 exists in equilibrium between molecular SO2 (as a dissolved gas) and bisulfite ion. it prevents microbial growth and the oxidation of wine.
+7. total sulfur dioxide: amount of free and bound forms of S02; in low concentrations, SO2 is mostly undetectable in wine, but at free SO2 concentrations over 50 ppm, SO2 becomes evident in the nose and taste of wine.
+8. density: the density of wine is close to that of water depending on the percent alcohol and sugar content
+9. pH: how acidic or basic the wine is where 0 is very acidic and 14 is very basic.
+10. sulphates: a wine additive which can contribute to sulfur dioxide gas (S02) levels, which acts as an antimicrobial and antioxidant.
+11. alcohol: alcohol content
+12. quality: quality of the wine
+
+
+
+Problem Statement: To build a model to predict the quality of red wine given the other variables using the dataset provided above.
+
+##### Exploring bivariate relationships
+
+```{r exploratory analysis, warning=FALSE}
+library(car)
+
+scatterplotMatrix(~ fixed_acidity + volatile_acidity + citric_acid +
+                    residual_sugar + chlorides + quality , 
+                  data=wine_quality)
+
+scatterplotMatrix(~ free_sulfur_dioxide + total_sulfur_dioxide +
+                    density + p_h + sulphates + alcohol + quality , 
+                  data=wine_quality)
+
+
+```
+
+
+
+```{r train test data 80-20}
+a <- createDataPartition(wine_quality$quality, p = 0.8, list=FALSE)
+train_data_wine <- wine_quality[a,]
+test_data_wine <- wine_quality[-a,]
+```
+
+
+
+```{r modeling}
+
+full_model_wine <- lm(quality ~ ., data = train_data_wine)
+summary(full_model_wine)
+
+AIC(full_model_wine)
+
+intercept_model_wine <- lm(quality ~ 1, data = train_data_wine)
+forward_model_wine <- step(intercept_model_wine,
+                      direction = 'forward',
+                      scope = list(lower = formula(intercept_model_wine),
+                                   upper = formula(full_model_wine)),
+                      trace = 0)
+
+summary(forward_model_wine)
+AIC(forward_model_wine)
+```
+
+
+```{r residuals}
+residuals_fwd_model <- resid(forward_model_wine)
+
+#Q-Q plot
+qqnorm(residuals_fwd_model)
+qqline(residuals_fwd_model)
+```
+
+
+```{r predict w test data}
+preds <- predict(forward_model_wine, test_data_wine, type = 'response')
+#preds <- round(preds)
+
+data_comp <- data.frame(predicted = preds,
+                       observed = test_data_wine$quality)
+
+ggplot(data_comp,aes(x = predicted, y = observed)) +
+  geom_jitter(alpha = 0.5) +
+  geom_abline(intercept = 0,slope = 1,color = "red") + 
+  xlab("Predicted quality") + ylab("Actual quality") +
+  ggtitle("Actual vs Predicted")
+
+#mean squared error
+mean((data_comp$observed-data_comp$predicted)^2)
+
+```
+
+
